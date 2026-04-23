@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LabOS — Usage Log</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo"><h1>Lab<span>OS</span></h1><p>TCET — BCA Block C</p></div>
+  <nav class="sidebar-nav">
+    <div class="nav-label">Main</div>
+    <a href="index.html" class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <a href="computers.html" class="nav-item"><span class="icon">🖥️</span> Computers</a>
+    <a href="software.html" class="nav-item"><span class="icon">📦</span> Software</a>
+    <a href="maintenance.html" class="nav-item"><span class="icon">🔧</span> Maintenance</a>
+    <a href="usage.html" class="nav-item active"><span class="icon">📋</span> Usage Log</a>
+  </nav>
+  <div class="sidebar-footer"><div id="liveClock">00:00:00</div></div>
+</aside>
+
+<main class="main-content">
+  <div class="topbar">
+    <div>
+      <div class="page-title">Usage Log</div>
+      <div class="page-subtitle">Track computer sessions and user activity</div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn" onclick="loadAll()">↻ Refresh</button>
+      <button class="btn btn-primary" onclick="openLoginModal()">+ Log Session</button>
+    </div>
+  </div>
+
+  <div class="stats-grid" id="usageStats">
+    <div class="stat-card info"><div class="stat-label">Active Sessions</div><div class="stat-value" id="activeStat">–</div><div class="stat-footer">Right now</div></div>
+    <div class="stat-card"><div class="stat-label">Today's Sessions</div><div class="stat-value" id="todayStat">–</div><div class="stat-footer">Total logins</div></div>
+    <div class="stat-card accent"><div class="stat-label">Avg Duration</div><div class="stat-value" id="avgStat">–</div><div class="stat-footer">Minutes per session</div></div>
+    <div class="stat-card warn"><div class="stat-label">Peak Hour</div><div class="stat-value" id="peakStat">–</div><div class="stat-footer">Busiest time today</div></div>
+  </div>
+
+  <div class="two-col mb-24">
+    <!-- Active Sessions -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🟢 Active Sessions</div>
+        <span id="activeCount" class="badge badge-info">–</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>PC</th><th>User</th><th>Login Time</th><th>Purpose</th><th>Action</th></tr></thead>
+          <tbody id="activeSessions"><tr><td colspan="5" style="color:var(--text-muted)">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Top Users -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">🏆 Top Users (All Time)</div></div>
+      <div class="card-body" id="topUsersList"><div style="color:var(--text-muted)">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Session History -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📋 Session History</div>
+      <div class="search-bar" style="margin:0">
+        <input class="form-control" id="sessionSearch" placeholder="Search user or PC..." oninput="filterSessions()">
+        <input class="form-control" type="date" id="dateFilter" onchange="loadSessionsByDate()" style="max-width:160px">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>PC</th><th>User</th><th>Login</th><th>Logout</th><th>Duration</th><th>Purpose</th><th>Status</th><th></th></tr></thead>
+        <tbody id="sessionTable"><tr><td colspan="8" style="color:var(--text-muted)">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Login Session Modal -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title">Log New Session</div>
+      <button class="modal-close" onclick="closeModal('loginModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">PC ID *</label>
+        <input class="form-control" id="lg-pc" placeholder="PC-01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Student Name *</label>
+        <input class="form-control" id="lg-user" placeholder="Full name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Purpose</label>
+        <select class="form-control" id="lg-purpose">
+          <option>General Use</option>
+          <option>Assignment</option>
+          <option>Lab Practical</option>
+          <option>Project Work</option>
+          <option>Research</option>
+          <option>Exam Practice</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('loginModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="logIn()">Start Session</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  startClock();
+  let allSessions = [];
+
+  // Set today's date as default filter
+  document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
+
+  async function loadActiveSessions() {
+    const res = await api.get('/usage?active=true');
+    const sessions = res.data || [];
+    document.getElementById('activeStat').textContent = sessions.length;
+    document.getElementById('activeCount').textContent = sessions.length;
+
+    document.getElementById('activeSessions').innerHTML = sessions.length
+      ? sessions.map(s => `
+        <tr>
+          <td class="mono" style="font-size:12px">${s.pcId}</td>
+          <td style="font-weight:500">${s.userName}</td>
+          <td style="color:var(--text-muted);font-size:12px">${new Date(s.loginTime).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'})}</td>
+          <td style="font-size:12px">${s.purpose}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="logOut('${s._id}','${s.userName}','${s.pcId}')">End</button></td>
+        </tr>
+      `).join('')
+      : `<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:20px">No active sessions</td></tr>`;
+  }
+
+  async function loadTopUsers() {
+    const res = await api.get('/usage/top-users');
+    const users = res.data || [];
+    const max = users[0]?.totalMinutes || 1;
+    document.getElementById('topUsersList').innerHTML = users.length
+      ? users.map((u, i) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.05)">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text-muted);min-width:16px">${i+1}</span>
+          <div style="flex:1">
+            <div style="font-weight:500;font-size:13px">${u._id}</div>
+            <div class="progress"><div class="progress-fill" style="width:${Math.round((u.totalMinutes/max)*100)}%;background:var(--info)"></div></div>
+          </div>
+          <div style="text-align:right">
+            <div class="mono" style="font-size:12px">${Math.round(u.totalMinutes/60)}h</div>
+            <div style="font-size:11px;color:var(--text-muted)">${u.sessions} sessions</div>
+          </div>
+        </div>
+      `).join('')
+      : `<div style="color:var(--text-muted);font-size:13px">No session data yet</div>`;
+  }
+
+  async function loadSessionsByDate() {
+    const date = document.getElementById('dateFilter').value;
+    const res = await api.get(`/usage${date ? '?date='+date : ''}&active=false`);
+    allSessions = res.data || [];
+
+    // Stats
+    const todayRes = await api.get(`/usage?date=${new Date().toISOString().split('T')[0]}`);
+    const todaySessions = todayRes.data || [];
+    document.getElementById('todayStat').textContent = todaySessions.length;
+
+    const completed = todaySessions.filter(s => s.durationMinutes);
+    const avg = completed.length ? Math.round(completed.reduce((a,s) => a + s.durationMinutes, 0) / completed.length) : 0;
+    document.getElementById('avgStat').textContent = avg;
+    document.getElementById('peakStat').textContent = '10am';
+
+    renderSessionTable(allSessions);
+  }
+
+  function renderSessionTable(data) {
+    document.getElementById('sessionTable').innerHTML = data.length
+      ? data.map(s => `
+        <tr>
+          <td class="mono" style="font-size:12px">${s.pcId}</td>
+          <td style="font-weight:500">${s.userName}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${new Date(s.loginTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${s.logoutTime ? new Date(s.logoutTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+          <td class="mono" style="font-size:12px">${s.durationMinutes ? s.durationMinutes + ' min' : '—'}</td>
+          <td style="font-size:12px">${s.purpose}</td>
+          <td>${statusBadge(s.active ? 'in-use' : 'free')}</td>
+          <td>${s.active ? `<button class="btn btn-sm btn-danger" onclick="logOut('${s._id}','${s.userName}','${s.pcId}')">End</button>` : ''}</td>
+        </tr>
+      `).join('')
+      : `<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">No sessions found for this date</td></tr>`;
+  }
+
+  function filterSessions() {
+    const q = document.getElementById('sessionSearch').value.toLowerCase();
+    renderSessionTable(allSessions.filter(s =>
+      !q || s.userName.toLowerCase().includes(q) || s.pcId.toLowerCase().includes(q)
+    ));
+  }
+
+  function openLoginModal() {
+    document.getElementById('lg-pc').value = '';
+    document.getElementById('lg-user').value = '';
+    document.getElementById('lg-purpose').value = 'General Use';
+    openModal('loginModal');
+  }
+
+  async function logIn() {
+    const pcId = document.getElementById('lg-pc').value.trim().toUpperCase();
+    const userName = document.getElementById('lg-user').value.trim();
+    if (!pcId || !userName) return showToast('PC ID and name required', 'error');
+
+    const res = await api.post('/usage/login', { pcId, userName, purpose: document.getElementById('lg-purpose').value });
+    if (res.success) {
+      showToast(`Session started: ${userName} on ${pcId}`);
+      closeModal('loginModal');
+      loadAll();
+    } else {
+      showToast(res.message || 'Error starting session', 'error');
+    }
+  }
+
+  async function logOut(sessionId, userName, pcId) {
+    confirmAction(`End session for ${userName} on ${pcId}?`, async () => {
+      const res = await api.post(`/usage/logout/${sessionId}`, {});
+      if (res.success) { showToast(`Session ended — ${res.message}`); loadAll(); }
+      else showToast(res.message, 'error');
+    });
+  }
+
+  async function loadAll() {
+    await Promise.all([loadActiveSessions(), loadTopUsers(), loadSessionsByDate()]);
+  }
+
+  loadAll();
+</script>
+</body>
+</html>
