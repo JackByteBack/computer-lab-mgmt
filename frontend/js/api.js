@@ -38,19 +38,33 @@ const api = {
 // Toast notification utility
 function showToast(message, type = 'success') {
   const toast = document.createElement('div');
-  const colors = { success: '#1D9E75', error: '#A32D2D', warn: '#BA7517', info: '#185FA5' };
+  const colors = { 
+    success: 'var(--accent)', 
+    error: 'var(--danger)', 
+    warn: 'var(--warn)', 
+    info: 'var(--info)' 
+  };
   toast.style.cssText = `
-    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    position: fixed; bottom: 32px; right: 32px; z-index: 9999;
     background: ${colors[type]}; color: #fff;
-    padding: 12px 20px; border-radius: 10px;
-    font-size: 13px; font-weight: 500;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-    animation: slideIn 0.3s ease;
-    font-family: 'DM Sans', sans-serif;
+    padding: 14px 24px; border-radius: 12px;
+    font-size: 14px; font-weight: 600;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    animation: slideInUp 0.3s cubic-bezier(0, 0, 0.2, 1);
+    font-family: var(--font-body);
+    display: flex; align-items: center; gap: 12px;
   `;
-  toast.textContent = message;
+  
+  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : type === 'warn' ? '⚠' : 'ℹ';
+  toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+  
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(20px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // Format date utility
@@ -66,6 +80,7 @@ function daysUntil(dateStr) {
 }
 
 function timeSince(dateStr) {
+  if (!dateStr) return 'never';
   const secs = Math.floor((Date.now() - new Date(dateStr)) / 1000);
   if (secs < 60) return 'just now';
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
@@ -101,4 +116,28 @@ function startClock() {
 // Confirm dialog
 function confirmAction(msg, onConfirm) {
   if (confirm(msg)) onConfirm();
+}
+
+// Update sidebar maintenance badge
+async function updateSidebarBadge() {
+  const el = document.getElementById('sidebarTickets');
+  if (!el) return;
+  try {
+    const res = await api.get('/maintenance/stats/summary');
+    const mx = res.data;
+    el.textContent = mx.open + mx.inProgress;
+  } catch (e) { console.error('Failed to update sidebar badge'); }
+}
+
+// Add animation to CSS
+if (!document.getElementById('api-animations')) {
+  const style = document.createElement('style');
+  style.id = 'api-animations';
+  style.textContent = `
+    @keyframes slideInUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
 }
