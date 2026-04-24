@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const Computer = require('./models/Computer');
 const SoftwareLicense = require('./models/SoftwareLicense');
 const Maintenance = require('./models/Maintenance');
+const UsageSession = require('./models/UsageSession');
+
 
 const connectDB = async () => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -47,12 +49,21 @@ const tickets = [
   { pcId: 'PC-29', issue: 'Overheating — fan needs replacement', priority: 'low', assignee: 'Unassigned', reportedBy: 'Student' },
 ];
 
+const sessions = [
+  { pcId: 'PC-03', userName: 'Rahul Mehta', loginTime: new Date(Date.now() - 1000 * 60 * 45), purpose: 'Assignment', active: true },
+  { pcId: 'PC-05', userName: 'Priya Sharma', loginTime: new Date(Date.now() - 1000 * 60 * 120), purpose: 'Lab Practical', active: true },
+  { pcId: 'PC-11', userName: 'Anita Rao', loginTime: new Date(Date.now() - 1000 * 60 * 10), purpose: 'General Use', active: true },
+  { pcId: 'PC-15', userName: 'Deepak Jain', loginTime: new Date(Date.now() - 1000 * 60 * 200), logoutTime: new Date(Date.now() - 1000 * 60 * 140), durationMinutes: 60, purpose: 'Research', active: false },
+  { pcId: 'PC-08', userName: 'Rahul Mehta', loginTime: new Date(Date.now() - 1000 * 60 * 300), logoutTime: new Date(Date.now() - 1000 * 60 * 210), durationMinutes: 90, purpose: 'Exam Practice', active: false },
+];
+
 const seed = async () => {
   await connectDB();
   try {
     await Computer.deleteMany();
     await SoftwareLicense.deleteMany();
     await Maintenance.deleteMany();
+    await UsageSession.deleteMany();
     console.log('🗑  Cleared existing data');
 
     await Computer.insertMany(computers);
@@ -67,6 +78,11 @@ const seed = async () => {
       await Maintenance.create(t);
     }
     console.log(`✅ Seeded ${tickets.length} maintenance tickets`);
+
+    for (const s of sessions) {
+      await UsageSession.create(s);
+    }
+    console.log(`✅ Seeded ${sessions.length} usage sessions`);
 
     console.log('\n🎉 Database seeded successfully!');
   } catch (err) {
