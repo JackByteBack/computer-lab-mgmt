@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LabOS — Live Monitor</title>
+  <script>
+    if (localStorage.getItem('labos_loggedIn') !== 'true') {
+      window.location.href = 'index.html';
+    }
+  </script>
+  <link rel="stylesheet" href="frontend/css/style.css">
+  <script src="frontend/js/api.js"></script>
+  <style>
+    /* ── MONITOR PAGE EXTRAS ── */
+    .monitor-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .monitor-toolbar .search-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 9px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font-body);
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+    }
+    .monitor-toolbar .search-input:focus { border-color: var(--accent); }
+    .monitor-toolbar select {
+      padding: 9px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+    }
+    .view-toggle { display: flex; gap: 4px; }
+    .view-btn {
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── CONNECTED BANNER ── */
+    .connected-banner {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 14px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .connected-banner .pulse-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      box-shadow: 0 0 0 3px rgba(128,62,47,0.2);
+      animation: pulseDot 1.5s ease-in-out infinite;
+    }
+    @keyframes pulseDot {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(128,62,47,0.2); }
+      50% { box-shadow: 0 0 0 7px rgba(128,62,47,0.05); }
+    }
+    .connected-banner .stat-pills { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+    .stat-pill {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono, monospace);
+    }
+    .pill-green { background: rgba(159,225,203,0.15); color: #803E2F; }
+    .pill-blue  { background: rgba(167,153,134,0.15); color: #A79986; }
+    .pill-red   { background: rgba(163,45,45,0.12);   color: #A32D2D; }
+    .pill-gray  { background: rgba(100,116,139,0.12); color: #64748b; }
+
+    /* ── MONITOR GRID ── */
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .monitor-grid.list-view { grid-template-columns: 1fr; gap: 8px; }
+
+    /* ── MONITOR CARD ── */
+    .monitor-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+      cursor: pointer;
+      animation: cardSlideIn 0.4s ease both;
+    }
+    @keyframes cardSlideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: none; }
+    }
+    .monitor-card:hover {
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      transform: translateY(-2px);
+      border-color: rgba(128,62,47,0.3);
+    }
+    .monitor-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(128,62,47,0.2); }
+    .monitor-card.status-offline { opacity: 0.5; }
+
+    /* Screen preview area */
+    .screen-preview {
+      height: 150px;
+      background: #0a0c10;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono, monospace);
+      font-size: 11px;
+    }
+    .screen-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(128,62,47,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(128,62,47,0.04) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* Advanced Activity Simulation */
+    .activity-sim {
+      position: relative;
+      z-index: 1;
+      width: 94%;
+      height: 85%;
+      background: #0f172a;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.1);
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    /* Mock OS Header */
+    .sim-header {
+      height: 12px;
+      background: rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      padding: 0 6px;
+      gap: 3px;
+    }
+    .sim-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.2); }
+    .sim-title { font-size: 6px; color: var(--text-muted); margin-left: 4px; font-family: sans-serif; overflow: hidden; white-space: nowrap; }
+
+    /* Mock OS Content */
+    .sim-body { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+    .sim-line { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.05); }
+    .sim-line.w80 { width: 80%; }
+    .sim-line.w60 { width: 60%; }
+    .sim-line.w90 { width: 90%; }
+    .sim-line.accent { background: var(--accent); opacity: 0.3; }
+
+    /* Mock OS Taskbar */
+    .sim-taskbar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 10px;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      padding: 0 6px;
+      gap: 4px;
+    }
+    .sim-start { width: 6px; height: 6px; background: var(--accent); border-radius: 1px; }
+    .sim-app-icon { width: 6px; height: 6px; background: rgba(255,255,255,0.2); border-radius: 1px; }
+
+    /* Visual Content Types */
+    .sim-video-box { width: 100%; height: 50px; background: #000; border-radius: 2px; position: relative; margin-top: 4px; }
+    .sim-video-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); border-left: 6px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+    .sim-game-ui { width: 100%; height: 60px; background: linear-gradient(45deg, #1e1b4b, #312e81); border-radius: 2px; position: relative; }
+    .sim-crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; border: 1px solid #ff4b4b; transform: translate(-50%,-50%); border-radius: 50%; }
+
+    @keyframes simPulse {
+      0%,100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    .sim-typing {
+      font-size: 8px;
+      color: var(--accent);
+      font-family: monospace;
+      margin-top: 4px;
+      animation: typingBlink 1.5s step-end infinite;
+    }
+    @keyframes typingBlink { 50% { opacity: 0; } }
+
+    /* Offline/free overlay */
+    .screen-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #475569;
+      z-index: 2;
+      background: rgba(10,12,16,0.85);
+    }
+    .screen-overlay .ov-icon { font-size: 28px; }
+    .screen-status-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 3;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-inuse  { background: rgba(24,95,165,0.25); color: #5badff; }
+    .badge-free   { background: rgba(128,62,47,0.2); color: var(--accent); }
+    .badge-maint  { background: rgba(186,117,23,0.2); color: #FAC775; }
+    .badge-offline{ background: rgba(100,116,139,0.2); color: #64748b; }
+
+    /* Activity type chip */
+    .activity-chip {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      z-index: 3;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 9px;
+      font-weight: 600;
+      background: rgba(0,0,0,0.6);
+      color: #94a3b8;
+      backdrop-filter: blur(4px);
+    }
+
+    /* Card info section */
+    .monitor-info {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .pc-id {
+      font-family: var(--font-mono, monospace);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .pc-user {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .monitor-info-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 6px;
+    }
+    .icon-btn {
+      width: 28px; height: 28px;
+      border: 1px solid var(--border);
+      background: transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .icon-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* LIST VIEW */
+    .monitor-grid.list-view .monitor-card { border-radius: 10px; }
+    .monitor-grid.list-view .screen-preview { height: 60px; width: 100px; flex-shrink: 0; }
+    .monitor-grid.list-view .monitor-card { display: flex; flex-direction: row; }
+    .monitor-grid.list-view .monitor-info { border-top: none; border-left: 1px solid var(--border); flex: 1; }
+    .monitor-grid.list-view .activity-sim { padding: 4px; }
+
+    /* ── DETAIL PANEL (slide-in) ── */
+    .detail-panel {
+      position: fixed;
+      top: 0; right: 0;
+      width: 380px;
+      height: 100vh;
+      background: #0f1318;
+      border-left: 1px solid var(--border);
+      z-index: 200;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .detail-panel.open { transform: translateX(0); }
+    .detail-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .detail-header h3 { font-size: 16px; font-weight: 700; flex: 1; }
+    .detail-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+    }
+    .detail-body { padding: 24px; flex: 1; }
+    .detail-screen {
+      width: 100%;
+      height: 180px;
+      background: #0a0c10;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .detail-stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .detail-stat {
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .detail-stat-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .detail-stat-val { font-size: 16px; font-weight: 700; margin-top: 4px; font-family: var(--font-mono, monospace); color: #fff; }
+    .detail-activity-log {
+      margin-top: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+    .detail-activity-log::-webkit-scrollbar { width: 4px; }
+    .detail-activity-log::-webkit-scrollbar-track { background: transparent; }
+    .detail-activity-log::-webkit-scrollbar-thumb { background: rgba(29, 158, 117, 0.2); border-radius: 10px; }
+
+    .detail-activity-log h4 { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+
+    .log-item {
+      display: flex;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      animation: logFadeIn 0.3s ease both;
+      border-left: 2px solid transparent;
+      padding-left: 8px;
+    }
+    .log-item:hover { background: rgba(255,255,255,0.02); border-left-color: var(--accent); }
+    @keyframes logFadeIn {
+      from { opacity: 0; transform: translateX(-5px); }
+      to { opacity: 1; transform: none; }
+    }
+    .log-time { color: var(--text-muted); font-family: monospace; flex-shrink: 0; width: 50px; }
+    .log-text { color: var(--text); }
+    .detail-actions { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+    .detail-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: none;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .detail-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .detail-btn:hover:not(.primary) { background: rgba(255,255,255,0.06); }
+    .detail-btn.primary:hover { background: var(--accent-dark); }
+
+    /* Overlay backdrop */
+    .panel-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 199;
+    }
+    .panel-backdrop.open { display: block; }
+
+    /* activity colors */
+    .act-code   { color: #60a5fa; }
+    .act-browse { color: #34d399; }
+    .act-docs   { color: #fbbf24; }
+    .act-idle   { color: #64748b; }
+    .act-media  { color: #a78bfa; }
+    .act-gaming { color: #f87171; }
+
+    /* ── CHAT SYSTEM ── */
+    .chat-container {
+      margin-top: 15px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.2);
+      display: none;
+      flex-direction: column;
+      height: 250px;
+    }
+    .chat-container.active { display: flex; }
+    .chat-header { padding: 10px; border-bottom: 1px solid var(--border); font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .chat-msg { max-width: 85%; padding: 6px 10px; border-radius: 8px; font-size: 11px; line-height: 1.4; }
+    .chat-msg.admin { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 2px; }
+    .chat-msg.student { align-self: flex-start; background: var(--border); color: var(--text); border-bottom-left-radius: 2px; }
+    .chat-input-area { padding: 8px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+    .chat-input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 6px; color: #fff; padding: 6px 10px; font-size: 11px; outline: none; }
+
+    /* ── NOTIFICATIONS ── */
+    #notifArea {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .notif-card {
+      width: 280px;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      pointer-events: auto;
+      animation: notifIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes notifIn { from { transform: translateX(50px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .notif-title { font-size: 12px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .notif-desc { font-size: 10px; color: var(--text-muted); margin: 4px 0 10px; }
+    .notif-actions { display: flex; gap: 6px; }
+    .notif-btn { flex: 1; padding: 6px; font-size: 10px; font-weight: 600; border-radius: 6px; cursor: pointer; border: none; }
+    .notif-btn.accept { background: var(--accent); color: #fff; }
+    .notif-btn.reject { background: rgba(255,255,255,0.05); color: var(--text); }
+
+    /* ── NOTIFICATION DRAWER ── */
+    #notifDrawer {
+      position: fixed;
+      top: 0; right: -350px; bottom: 0;
+      width: 350px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      z-index: 2500;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: -20px 0 50px rgba(0,0,0,0.5);
+    }
+    #notifDrawer.open { right: 0; }
+    .drawer-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .drawer-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: #fff; }
+    .notif-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    
+    .msg-notif-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .msg-notif-item:hover { background: rgba(255,255,255,0.06); border-color: var(--accent); }
+    .msg-notif-top { display: flex; justify-content: space-between; font-size: 10px; color: var(--accent); margin-bottom: 6px; font-weight: 700; text-transform: uppercase; }
+    .msg-notif-text { font-size: 12px; color: var(--text); line-height: 1.4; }
+    .msg-notif-time { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── BELL ICON ── */
+    .notif-bell {
+      position: relative;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .notif-badge {
+      position: absolute;
+      top: -5px; right: -5px;
+      background: #ef4444;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      display: none; align-items: center; justify-content: center;
+      border: 2px solid var(--surface);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    }
+    .notif-badge.active { display: flex; animation: badgePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+    @keyframes badgePop { from { transform: scale(0); } to { transform: scale(1); } }
+
+    /* ── GRID CHAT BUBBLE ── */
+    .grid-chat-bubble {
+      position: absolute;
+      top: -15px;
+      right: 10px;
+      background: var(--accent);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      animation: bubblePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+      z-index: 100;
+    }
+    @keyframes bubblePop { from { transform: scale(0) translateY(10px); } to { transform: scale(1) translateY(0); } }
+
+    /* ── FULL STREAM MODAL ── */
+    #streamModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 2000;
+      flex-direction: column;
+      animation: modalFade 0.3s ease;
+    }
+    #streamModal.open { display: flex; }
+    @keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+
+    .stream-header {
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 10;
+    }
+    .stream-info { display: flex; align-items: center; gap: 15px; }
+    .rec-dot { width: 12px; height: 12px; background: #ef4444; border-radius: 50%; animation: recBlink 1s infinite; }
+    @keyframes recBlink { 50% { opacity: 0; } }
+    .stream-title { font-family: var(--font-display); font-size: 20px; color: #fff; }
+    .stream-meta { font-size: 12px; color: var(--accent); font-family: monospace; }
+
+    .stream-content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px;
+      position: relative;
+    }
+    .stream-viewport {
+      width: 100%;
+      max-width: 1200px;
+      aspect-ratio: 16/9;
+      background: #0f172a;
+      border-radius: 12px;
+      border: 2px solid var(--accent);
+      box-shadow: 0 0 100px rgba(128,62,47,0.2);
+      overflow: hidden;
+      position: relative;
+    }
+    /* Scanlines effect */
+    .stream-overlay-fx {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      background-size: 100% 4px, 3px 100%;
+      z-index: 5;
+    }
+
+    .stream-footer {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="notifArea"></div>
+
+<!-- Notification Drawer -->
+<div id="notifDrawer">
+  <div class="drawer-header">
+    <div class="drawer-title">Activity Center</div>
+    <button class="btn" style="background:none; border:none; color:var(--text-muted)" onclick="toggleNotifDrawer()">✕</button>
+  </div>
+  <div class="notif-list" id="notifList">
+    <div style="text-align:center; padding-top:40px; color:var(--text-muted); font-size:12px">No new notifications</div>
+  </div>
+</div>
+
+<!-- Full Stream Modal -->
+<div id="streamModal">
+  <div class="stream-header">
+    <div class="stream-info">
+      <div class="rec-dot"></div>
+      <div class="stream-title" id="stTitle">PC-01</div>
+      <div class="stream-meta" id="stMeta">LIVE | 1080p | 60 FPS | 4.2 Mbps</div>
+    </div>
+    <button class="btn" style="background:rgba(255,255,255,0.1); border:none" onclick="closeStream()">✕ Close Stream</button>
+  </div>
+  <div class="stream-content">
+    <div class="stream-viewport">
+      <div class="stream-overlay-fx"></div>
+      <div id="stDisplay" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center"></div>
+    </div>
+  </div>
+  <div class="stream-footer">
+    <button class="btn btn-primary" onclick="toggleChat(); closeStream()">💬 Chat with User</button>
+    <button class="btn" style="background:#ef4444; border:none; color:#fff" onclick="lockPC(); closeStream()">🔒 Emergency Lock</button>
+  </div>
+</div>
+
+<aside class="sidebar">
+  <!-- PROFILE SECTION -->
+  <div class="profile-section">
+    <div class="profile-img" onclick="toggleProfileDropdown()" id="profileTrigger">👤</div>
+    <div class="profile-dropdown" id="profileDropdown">
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+        <div style="font-weight: 700; font-size: 14px;" id="userNameDisplay">Admin</div>
+        <div style="font-size: 11px; color: var(--text-muted);">Lab Administrator</div>
+      </div>
+      <button class="dropdown-item" onclick="showToast('Settings opened')">⚙️ Settings</button>
+      <button class="dropdown-item" onclick="showToast('Features list')">🌟 Features</button>
+      <div class="dropdown-divider"></div>
+      <button class="dropdown-item" onclick="showLogoutVerification()" style="color:var(--danger)">🔐 Logout</button>
+    </div>
+  </div>
+
+  <div class="sidebar-logo">
+    <h1>Lab<span>OS</span></h1>
+    <p>TCET — BCA Block C</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label">Main</div>
+    <a href="dashboard.html" class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <a href="monitor.html" class="nav-item active"><span class="icon">📺</span> Live Monitor</a>
+    <a href="computers.html" class="nav-item"><span class="icon">🖥️</span> Computers</a>
+    <a href="software.html" class="nav-item"><span class="icon">📦</span> Software</a>
+    <a href="maintenance.html" class="nav-item"><span class="icon">🔧</span> Maintenance <span class="nav-badge" id="sidebarTickets">–</span></a>
+    <a href="usage.html" class="nav-item"><span class="icon">📋</span> Usage Log</a>
+    
+  </nav>
+  <div class="sidebar-footer">
+    <div id="liveClock">00:00:00</div>
+    <div class="version-text">Lab Management v5.0.2</div>
+  </div>
+</aside>
+
+<main class="main-content">
+  <div class="topbar">
+    <div>
+      <div class="page-title">📺 Live Monitor</div>
+      <div class="page-subtitle">Real-time view of all connected devices and user activity</div>
+    </div>
+    <div class="topbar-actions" style="gap:16px">
+      <div class="notif-bell" onclick="toggleNotifDrawer()">
+        🔔 <div class="notif-badge" id="notifBadge">0</div>
+      </div>
+      <button class="btn btn-primary" onclick="loadMonitor()" style="padding: 10px 20px; font-weight:700; min-width:140px">↻ Refresh Data</button>
+    </div>
+  </div>
+
+  <!-- Connected Banner -->
+  <div class="connected-banner" id="connectedBanner">
+    <div class="pulse-dot"></div>
+    <span id="bannerText">Loading live data…</span>
+    <div class="stat-pills" id="statPills"></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="monitor-toolbar">
+    <input class="search-input" id="searchMon" placeholder="🔍 Search PC, user, activity…" oninput="applyFilter()">
+    <select id="statusFilter" onchange="applyFilter()">
+      <option value="">All Status</option>
+      <option value="in-use">In Use</option>
+      <option value="free">Free</option>
+      <option value="maintenance">Maintenance</option>
+      <option value="offline">Offline</option>
+    </select>
+    <select id="actFilter" onchange="applyFilter()">
+      <option value="">All Activity</option>
+      <option value="Coding">Coding</option>
+      <option value="Browsing">Browsing</option>
+      <option value="Docs">Documents</option>
+      <option value="Media">Media</option>
+      <option value="Idle">Idle</option>
+    </select>
+    <div class="view-toggle">
+      <button class="view-btn active" id="gridBtn" onclick="setView('grid')">⊞</button>
+      <button class="view-btn" id="listBtn" onclick="setView('list')">☰</button>
+    </div>
+  </div>
+
+  <!-- Monitor Grid -->
+  <div class="monitor-grid" id="monitorGrid">
+    <div style="padding:40px;color:var(--text-muted);font-size:13px;grid-column:1/-1;text-align:center">Loading devices…</div>
+  </div>
+</main>
+
+<!-- Detail Panel -->
+<div class="panel-backdrop" id="backdrop" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <h3 id="detailTitle">PC Details</h3>
+    <button class="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div class="detail-body">
+    <div class="detail-screen" id="detailScreen">
+      <div class="screen-grid"></div>
+    </div>
+    <div class="detail-stat-row" id="detailStats"></div>
+
+    <!-- Chat System -->
+    <div class="chat-container" id="chatBox">
+      <div class="chat-header">🤖 AI Lab Assistant — <span id="chatTarget">PC</span></div>
+      <div class="chat-messages" id="chatMsgs"></div>
+      <div class="chat-input-area">
+        <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key === 'Enter') sendChat()">
+        <button class="btn btn-primary" style="padding:4px 10px; font-size:10px" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+
+    <div class="detail-activity-log">
+      <h4>Activity Log (last 10 min)</h4>
+      <div id="detailLog"></div>
+    </div>
+  </div>
+  <div class="detail-actions" style="border-top:1px solid var(--border); padding:20px; display:flex; gap:12px; margin-top:20px">
+    <button class="detail-btn" id="chatBtn" onclick="toggleChat()" style="background:rgba(128,62,47,0.1); color:var(--accent); border:1px solid var(--accent); font-weight:700">💬 Chat</button>
+    <button class="detail-btn" id="lockBtn" onclick="lockPC()" style="background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.3); font-weight:700">🔒 Lock PC</button>
+    <button class="detail-btn primary" onclick="viewFull()" style="background:var(--accent); color:#fff; flex:1; border:none; box-shadow: 0 4px 12px var(--accent-glow); font-weight:700">🖥 View Stream</button>
+  </div>
+</div>
+
+<script>
+  /* ── CLOCK ── */
+  function tick() { document.getElementById('liveClock').textContent = new Date().toLocaleTimeString(); }
+  tick();
+
+  /* ── ADVANCED INTELLIGENCE DATA ── */
+  const ACTIVITIES = ['Coding', 'Browsing', 'Docs', 'Media', 'Gaming', 'Idle'];
+  const ACTIVITY_ICONS = { Coding: '💻', Browsing: '🌐', Docs: '📄', Media: '🎬', Gaming: '🎮', Idle: '😴' };
+  const ACTIVITY_COLORS = { Coding: 'act-code', Browsing: 'act-browse', Docs: 'act-docs', Media: 'act-media', Gaming: 'act-gaming', Idle: 'act-idle' };
+  const FAKE_APPS = {
+    Coding:   ['VS Code — main.js', 'VS Code — server.js', 'Terminal — npm run dev', 'PyCharm — AI_Model.py'],
+    Browsing: ['Chrome — YouTube', 'Chrome — Stack Overflow', 'Chrome — MDN Docs', 'Edge — Research Portal'],
+    Docs:     ['Microsoft Word — Thesis_Final.docx', 'Microsoft Excel — Budget_2024.xlsx', 'PowerPoint — Presentation.pptx'],
+    Media:    ['YouTube — 4K Relaxing Music', 'Netflix — The Social Network', 'Spotify — Coding Focus Playlist'],
+    Gaming:   ['Valorant (Match in Progress)', 'GTA V — Story Mode', 'Minecraft — Building Base', 'Counter-Strike 2'],
+    Idle:     ['Lock Screen', 'Desktop', '(no activity)']
+  };
+
+  const DEEP_ACTIVITIES = {
+    Coding: [
+      { sub: 'Frontend (React/Vite)', intent: 'College Assignment', details: 'fixing UI bugs in the dashboard' },
+      { sub: 'Backend (Node/Express)', intent: 'Personal Project', details: 'implementing JWT authentication' },
+      { sub: 'Fullstack (Next.js)', intent: 'Lab Exercise', details: 'connecting mongoDB to the frontend' }
+    ],
+    Browsing: [
+      { sub: 'Asset Research', intent: 'Final Project', details: 'downloading icons and fonts' },
+      { sub: 'Documentation', intent: 'Learning', details: 'reading MDN and Stack Overflow' },
+      { sub: 'Resource Loading', intent: 'Portfolio', details: 'optimizing images for web' }
+    ],
+    Docs: [
+      { sub: 'Report Writing (Word)', intent: 'College Assignment', details: 'drafting the viva questions' },
+      { sub: 'Data Analysis (Excel)', intent: 'Lab Work', details: 'sorting PC maintenance logs' }
+    ],
+    Gaming: [
+      { sub: 'Valorant', intent: 'Personal Work (Testing)', details: 'checking GPU thermals' },
+      { sub: 'GTA V', intent: 'Personal (Idle)', details: 'just roaming in open world' }
+    ]
+  };
+
+  /* ── ACTIVITY-DRIVEN ASSETS ── */
+  const ACTIVITY_VIDEOS = {
+    Coding:   "https://www.w3schools.com/html/mov_bbb.mp4", // Placeholder for coding style
+    Media:    "https://www.w3schools.com/html/movie.mp4",
+    Gaming:   "https://www.w3schools.com/html/mov_bbb.mp4",
+    Browsing: "https://www.w3schools.com/html/movie.mp4",
+    Default:  "https://www.w3schools.com/html/mov_bbb.mp4"
+  };
+
+  const ACTIVITY_IMAGES = {
+    Coding:   ["https://images.unsplash.com/photo-1587620962725-abab7fe55159?w=300", "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=300"],
+    Browsing: ["https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=300", "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=300"],
+    Docs:     ["https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?w=300", "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=300"],
+    Media:    ["https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=300", "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300"],
+    Gaming:   ["https://images.unsplash.com/photo-1542751371-adc38448a05e?w=300", "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300"],
+    Idle:     ["https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=300"]
+  };
+
+  function getVisualForActivity(activity, isVideo = false) {
+    if (isVideo) return ACTIVITY_VIDEOS[activity] || ACTIVITY_VIDEOS.Default;
+    const pool = ACTIVITY_IMAGES[activity] || ACTIVITY_IMAGES.Idle;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  const SMART_BEHAVIOR = [
+    "switching tabs...", "copying code...", "scrolling page...", "watching tutorial...", "typing fast...", "reading docs...", "compiling assets...", "searching terminal..."
+  ];
+
+  function getSmartAction() {
+    return SMART_BEHAVIOR[Math.floor(Math.random() * SMART_BEHAVIOR.length)];
+  }
+
+  const FAKE_NAMES = ['Rahul S.', 'Priya M.', 'Arjun K.', 'Sneha P.', 'Dev R.', 'Ananya B.', 'Rohan T.', 'Kavya J.', 'Yash G.', 'Riya D.'];
+  
+  let chatHistories = {}; // Isolated per-PC chat history
+  let pcDetailedActivity = {}; // Track what exactly each PC is doing
+
+  /* ── STATE ── */
+  let allComputers = [];
+  let allCards = []; // {computer, activity, appName, user}
+  let currentView = 'grid';
+  let selectedPc = null;
+
+  /* ── LOAD ── */
+  async function loadMonitor() {
+    try {
+      const res = await api.get('/computers');
+      allComputers = res.data;
+    } catch {
+      // Fallback demo data
+      allComputers = generateDemoComputers(20);
+    }
+    buildCards();
+    renderGrid();
+    updateBanner();
+  }
+
+  function generateDemoComputers(n) {
+    const statuses = ['in-use','in-use','in-use','free','free','maintenance','offline'];
+    return Array.from({ length: n }, (_, i) => ({
+      pcId: `PC-${String(i+1).padStart(2,'0')}`,
+      hostname: `TCET-BCA-${String(i+1).padStart(2,'0')}`,
+      status: statuses[Math.floor(Math.random() * statuses.length)],
+      currentUser: null,
+      location: { row: Math.floor(i/5)+1, seat: (i%5)+1 },
+      specs: { cpu: 'Intel Core i5-10400', ram: '8GB DDR4', storage: '512GB SSD', os: 'Windows 11' }
+    }));
+  }
+
+  function buildCards() {
+    allCards = allComputers.map(c => {
+      const act = c.status === 'in-use'
+        ? ACTIVITIES[Math.floor(Math.random() * (ACTIVITIES.length - 1))]
+        : (c.status === 'free' ? 'Idle' : null);
+      const appName = act && FAKE_APPS[act] ? FAKE_APPS[act][Math.floor(Math.random() * FAKE_APPS[act].length)] : '';
+      const user = c.currentUser || (c.status === 'in-use' ? FAKE_NAMES[Math.floor(Math.random() * FAKE_NAMES.length)] : null);
+      return { computer: c, activity: act, appName, user };
+    });
+  }
+
+  /* ── RENDER ── */
+  function renderGrid(filtered) {
+    const data = filtered || allCards;
+    const grid = document.getElementById('monitorGrid');
+    grid.className = 'monitor-grid' + (currentView === 'list' ? ' list-view' : '');
+
+    if (!data.length) {
+      grid.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:13px;grid-column:1/-1;text-align:center">No devices match filter.</div>';
+      return;
+    }
+
+    grid.innerHTML = data.map((item, idx) => buildCard(item, idx)).join('');
+  }
+
+  function buildCard({ computer: c, activity, appName, user }, idx) {
+    const delay = (idx * 30) + 'ms';
+    const statusClass = `status-${c.status.replace('-','')}`;
+
+    let preview = '';
+    let overlay = '';
+    let badge = '';
+    let chip = '';
+
+    const badgeMap = {
+      'in-use': 'badge-inuse',
+      'free': 'badge-free',
+      'maintenance': 'badge-maint',
+      'offline': 'badge-offline'
+    };
+    badge = `<div class="screen-status-badge ${badgeMap[c.status]}">${c.status}</div>`;
+
+    if (c.status === 'in-use' && activity && activity !== 'Idle') {
+      // Get detailed intelligence
+      if (!pcDetailedActivity[c.pcId]) {
+        const options = DEEP_ACTIVITIES[activity] || [{ sub: activity, intent: 'Unknown', details: 'N/A' }];
+        pcDetailedActivity[c.pcId] = options[Math.floor(Math.random() * options.length)];
+      }
+      const info = pcDetailedActivity[c.pcId];
+      const displayTitle = `${info.sub} — ${info.intent}`;
+
+      const alert = detectBehavior(c.pcId, activity, info.sub);
+      let warning = '';
+      if (alert && alert.risk > 60) {
+        warning = `<div style="position:absolute;top:8px;left:8px;background:rgba(239,68,68,0.9);color:#fff;padding:4px 8px;font-size:10px;border-radius:4px;z-index:10;font-weight:700;letter-spacing:0.5px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.2)">⚠ RISK ${alert.risk}%</div>`;
+      }
+
+      let bodyContent = '';
+
+      if (activity === 'Coding') {
+        bodyContent = `<div class="sim-body">${'<div class="sim-line w90"></div><div class="sim-line w60 accent"></div>'.repeat(3)}<div class="sim-typing">${getSmartAction()}</div></div>`;
+      } else if (activity === 'Media' || activity === 'Gaming') {
+        const vid = getVisualForActivity(activity, true);
+        bodyContent = `<video src="${vid}" autoplay muted loop playsinline style="width:100%; height:60px; object-fit:cover; border-radius:4px;"></video>`;
+      } else {
+        const img = getVisualForActivity(activity, false);
+        bodyContent = `<img src="${img}" style="width:100%; height:60px; object-fit:cover; border-radius:4px;" />`;
+      }
+
+      preview = `
+        <div class="activity-sim" style="position:relative">
+          ${warning}
+          <div class="sim-header"><div class="sim-dot"></div><div class="sim-dot"></div><div class="sim-title">${displayTitle}</div></div>
+          ${bodyContent}
+          <div class="sim-taskbar"><div class="sim-start"></div><div class="sim-app-icon"></div><div class="sim-app-icon"></div></div>
+        </div>`;
+      chip = `<div class="activity-chip ${ACTIVITY_COLORS[activity]}">${ACTIVITY_ICONS[activity]} ${activity}</div>`;
+      
+      // Grid Chat Alert
+      if (chatHistories[c.pcId]?.hasNew) {
+        overlay += `<div class="grid-chat-bubble">💬 New Message</div>`;
+      }
+    } else if (c.status === 'free') {
+      overlay = `<div class="screen-overlay"><div class="ov-icon">✓</div><span>Available</span></div>`;
+    } else if (c.status === 'maintenance') {
+      overlay = `<div class="screen-overlay"><div class="ov-icon">🔧</div><span>Maintenance</span></div>`;
+    } else if (c.status === 'offline') {
+      overlay = `<div class="screen-overlay"><div class="ov-icon">⬛</div><span>Offline</span></div>`;
+    }
+
+    const userLabel = user ? `<div class="pc-user">👤 ${user}</div>` : `<div class="pc-user" style="color:#475569">No user</div>`;
+
+    return `
+      <div class="monitor-card ${statusClass}" style="animation-delay:${delay}"
+           onclick="openDetail('${c.pcId}')" data-pcid="${c.pcId}" data-status="${c.status}" data-activity="${activity||''}">
+        <div class="screen-preview">
+          <div class="screen-grid"></div>
+          ${badge}
+          ${preview}
+          ${overlay}
+          ${chip}
+        </div>
+        <div class="monitor-info">
+          <div>
+            <div class="pc-id">${c.pcId}</div>
+            ${userLabel}
+          </div>
+          <div class="monitor-info-actions">
+            <button class="icon-btn" title="Message" onclick="event.stopPropagation();alert('Message sent to ${c.pcId}')">💬</button>
+            <button class="icon-btn" title="Lock" onclick="event.stopPropagation();alert('${c.pcId} locked')">🔒</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ── BANNER ── */
+  function updateBanner() {
+    const total = allCards.length;
+    const online = allCards.filter(c => c.computer.status !== 'offline').length;
+    const inUse  = allCards.filter(c => c.computer.status === 'in-use').length;
+    const free   = allCards.filter(c => c.computer.status === 'free').length;
+    const offline = allCards.filter(c => c.computer.status === 'offline').length;
+    document.getElementById('bannerText').textContent = `${online} of ${total} devices connected`;
+    document.getElementById('statPills').innerHTML = `
+      <span class="stat-pill pill-green">✓ ${free} Free</span>
+      <span class="stat-pill pill-blue">● ${inUse} In Use</span>
+      <span class="stat-pill pill-gray">✕ ${offline} Offline</span>
+    `;
+  }
+
+  /* ── FILTER ── */
+  function applyFilter() {
+    const q = document.getElementById('searchMon').value.toLowerCase();
+    const st = document.getElementById('statusFilter').value;
+    const act = document.getElementById('actFilter').value;
+    const filtered = allCards.filter(item => {
+      const c = item.computer;
+      const matchQ = !q || c.pcId.toLowerCase().includes(q) || (item.user||'').toLowerCase().includes(q) || (item.activity||'').toLowerCase().includes(q);
+      const matchSt = !st || c.status === st;
+      const matchAct = !act || item.activity === act;
+      return matchQ && matchSt && matchAct;
+    });
+    renderGrid(filtered);
+  }
+
+  /* ── VIEW ── */
+  function setView(v) {
+    currentView = v;
+    document.getElementById('gridBtn').classList.toggle('active', v === 'grid');
+    document.getElementById('listBtn').classList.toggle('active', v === 'list');
+    renderGrid();
+  }
+
+  /* ── AUTO REFRESH (REMOVED) ── */
+
+  /* ── DETAIL PANEL ── */
+  function openDetail(pcId) {
+    const item = allCards.find(c => c.computer.pcId === pcId);
+    if (!item) return;
+    const { computer: c, activity, appName, user } = item;
+    selectedPc = pcId;
+
+    document.getElementById('detailTitle').textContent = `${c.pcId} — ${c.hostname}`;
+    document.getElementById('backdrop').classList.add('open');
+    document.getElementById('detailPanel').classList.add('open');
+
+    // Detail screen
+    const ds = document.getElementById('detailScreen');
+    const info = pcDetailedActivity[c.pcId] || { sub: 'Idle', intent: 'None', details: 'N/A' };
+    const displayTitle = c.status === 'in-use' ? `${info.sub} — ${info.intent}` : 'System Offline';
+    
+    ds.innerHTML = `<div class="screen-grid"></div>`;
+    if (c.status === 'in-use' && activity && activity !== 'Idle') {
+      let bodyContent = '';
+
+      if (activity === 'Coding') {
+        bodyContent = `<div class="sim-body" style="padding:12px">${'<div class="sim-line w90"></div><div class="sim-line w60 accent"></div>'.repeat(6)}<div class="sim-typing" style="font-size:11px">${getSmartAction()}</div></div>`;
+      } else if (activity === 'Media' || activity === 'Gaming') {
+        const vid = getVisualForActivity(activity, true);
+        bodyContent = `<video src="${vid}" autoplay muted loop playsinline style="width:100%; height:110px; object-fit:cover; border-radius:8px;"></video>`;
+      } else {
+        const img = getVisualForActivity(activity, false);
+        bodyContent = `<img src="${img}" style="width:100%; height:110px; object-fit:cover; border-radius:8px;" />`;
+      }
+
+      const alert = detectBehavior(c.pcId, activity, info.sub);
+      let warning = '';
+      if (alert && alert.risk > 60) {
+        warning = `<div style="position:absolute;top:12px;left:12px;background:rgba(239,68,68,0.9);color:#fff;padding:6px 12px;font-size:12px;border-radius:6px;z-index:10;font-weight:700;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.2)">⚠ RISK ${alert.risk}% — ${alert.reason}</div>`;
+      }
+
+      ds.innerHTML += `
+        <div class="activity-sim" style="position:relative; width:90%; height:90%">
+          ${warning}
+          <div class="sim-header" style="height:20px"><div class="sim-dot"></div><div class="sim-dot"></div><div class="sim-title" style="font-size:10px">${displayTitle}</div></div>
+          ${bodyContent}
+          <div class="sim-taskbar" style="height:16px"><div class="sim-start" style="width:10px;height:10px"></div><div class="sim-app-icon" style="width:10px;height:10px"></div></div>
+        </div>`;
+    } else {
+      const msgs = { free: '✓ Available', offline: '⬛ Offline', maintenance: '🔧 Maintenance', 'in-use': '😴 Idle' };
+      ds.innerHTML += `<div class="screen-overlay" style="position:absolute;background:rgba(10,12,16,0.8)"><div class="ov-icon">${msgs[c.status]||''}</div></div>`;
+    }
+
+    // Stats
+    document.getElementById('detailStats').innerHTML = `
+      <div class="detail-stat"><div class="detail-stat-label">Status</div><div class="detail-stat-val" style="font-size:13px;color:var(--accent)">${c.status}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">User</div><div class="detail-stat-val" style="font-size:13px">${user || '—'}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">Detailed Activity</div><div class="detail-stat-val" style="font-size:11px">${c.status === 'in-use' ? info.sub : '—'}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">Purpose</div><div class="detail-stat-val" style="font-size:11px">${c.status === 'in-use' ? info.intent : '—'}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">CPU</div><div class="detail-stat-val" style="font-size:11px">${c.specs?.cpu||'—'}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">RAM</div><div class="detail-stat-val" style="font-size:12px">${c.specs?.ram||'—'}</div></div>
+    `;
+
+    // Auto-Disappear: Close chat box when opening new PC
+    chatBox.classList.remove('active');
+    document.getElementById('chatInput').value = '';
+    
+    msgsContainer.innerHTML = ''; // Auto-Clean: Clear messages for a fresh start
+    
+    if (c.status === 'in-use') {
+      chatBtn.style.display = 'flex';
+      // Load history if needed, otherwise leave empty
+      if (chatHistories[pcId]) {
+        chatHistories[pcId].messages.forEach(m => {
+          msgsContainer.innerHTML += `<div class="chat-msg ${m.role}">${m.text}</div>`;
+        });
+        chatHistories[pcId].hasNew = false;
+      } else {
+        chatHistories[pcId] = { messages: [], hasNew: false };
+      }
+    } else {
+      chatBtn.style.display = 'none';
+    }
+    msgsContainer.scrollTop = msgsContainer.scrollHeight;
+
+    // Fake activity log
+    const now = new Date();
+    let logEntries = [];
+    if (c.status === 'in-use') {
+      logEntries = [
+        { t: -1, text: `Process: ${info.sub}` },
+        { t: -3, text: getSmartAction() },
+        { t: -5, text: `Intent: ${info.intent}` },
+        { t: -8, text: getSmartAction() },
+        { t: -12, text: `Session initialized by ${user}` },
+      ];
+    } else {
+      logEntries = [
+        { t: -2, text: 'No active session' },
+        { t: -15, text: 'Last user logged out' },
+      ];
+    }
+
+    document.getElementById('detailLog').innerHTML = logEntries.map(l => {
+      const t = new Date(now.getTime() + l.t * 60000);
+      return `<div class="log-item"><span class="log-time">${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}</span><span class="log-text">${l.text}</span></div>`;
+    }).join('');
+  }
+
+  function closeDetail() {
+    document.getElementById('backdrop').classList.remove('open');
+    document.getElementById('detailPanel').classList.remove('open');
+    document.getElementById('chatBox').classList.remove('active');
+    document.getElementById('chatMsgs').innerHTML = ''; // Auto-Clean
+    selectedPc = null;
+  }
+
+  /* ── NOTIFICATION DRAWER LOGIC ── */
+  let unreadCount = 0;
+  function toggleNotifDrawer() {
+    const drawer = document.getElementById('notifDrawer');
+    drawer.classList.toggle('open');
+    if (drawer.classList.contains('open')) {
+      unreadCount = 0;
+      updateBadge();
+    }
+  }
+
+  function addNotification(pcId, text) {
+    const list = document.getElementById('notifList');
+    const badge = document.getElementById('notifBadge');
+    
+    // Clear "No new notifications" if first one
+    if (list.innerText.includes('No new notifications')) list.innerHTML = '';
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const item = `
+      <div class="msg-notif-item" onclick="openDetail('${pcId}'); toggleNotifDrawer();">
+        <div class="msg-notif-top">
+          <span>${pcId} — Message</span>
+          <span>${time}</span>
+        </div>
+        <div class="msg-notif-text">${text}</div>
+      </div>`;
+    
+    list.insertAdjacentHTML('afterbegin', item);
+
+    // Update Badge
+    if (!document.getElementById('notifDrawer').classList.contains('open')) {
+      unreadCount++;
+      updateBadge();
+    }
+  }
+
+  function updateBadge() {
+    const badge = document.getElementById('notifBadge');
+    badge.textContent = unreadCount;
+    if (unreadCount > 0) badge.classList.add('active');
+    else badge.classList.remove('active');
+  }
+
+  /* ── CHEATING DETECTION ── */
+  const CHEAT_RULES = {
+    Gaming: { risk: 90, reason: "Gaming detected" },
+    Media: { risk: 70, reason: "Entertainment detected" },
+    Browsing: { risk: 50, reason: "Possible distraction" },
+    Idle: { risk: 40, reason: "User inactive" }
+  };
+
+  function detectBehavior(pcId, activity, app) {
+    if (!activity || activity === "Coding" || activity === "Docs") return null;
+    let rule = CHEAT_RULES[activity];
+    if (!rule) return null;
+    if (activity === "Browsing" && app && app.toLowerCase().includes("youtube")) {
+      rule = { risk: 85, reason: "YouTube detected" };
+    }
+    return { pcId, risk: rule.risk, reason: rule.reason };
+  }
+
+  /* ── AI LAB ASSISTANT ENGINE (Admin asks → AI answers) ── */
+
+  function getAIReply(adminMsg, pcId) {
+    const msg = adminMsg.toLowerCase();
+    const item = allCards.find(c => c.computer.pcId === pcId);
+    const activity = item?.activity || 'Unknown';
+    const user = item?.user || 'Unknown Student';
+    const app = item?.appName || 'No app';
+    const info = pcDetailedActivity[pcId] || { sub: 'N/A', intent: 'N/A', details: 'N/A' };
+    const alert = detectBehavior(pcId, activity, info.sub);
+    const riskLevel = alert ? alert.risk : 0;
+    const status = item?.computer?.status || 'unknown';
+
+    // Status / What is happening
+    if (msg.includes('status') || msg.includes('what') || msg.includes('doing') || msg.includes('activity')) {
+      if (status !== 'in-use') return `${pcId} is currently ${status}. No active user session.`;
+      return `${user} is currently doing "${activity}" → ${info.sub} (${info.intent}). Running: ${app}.`;
+    }
+
+    // Who is using
+    if (msg.includes('who') || msg.includes('user') || msg.includes('student') || msg.includes('name')) {
+      if (status !== 'in-use') return `No one is using ${pcId} right now. Status: ${status}.`;
+      return `Current user: ${user}. They logged in and are working on ${info.intent}.`;
+    }
+
+    // Risk / Safe / Cheating
+    if (msg.includes('risk') || msg.includes('safe') || msg.includes('cheat') || msg.includes('suspicious') || msg.includes('alert')) {
+      if (riskLevel === 0) return `✅ ${pcId} is safe. No suspicious activity detected. Risk: 0%.`;
+      if (riskLevel < 60) return `⚠️ Low-medium risk (${riskLevel}%). Reason: ${alert.reason}. Monitor closely.`;
+      return `🚨 HIGH RISK (${riskLevel}%)! Reason: ${alert.reason}. Consider locking this PC immediately.`;
+    }
+
+    // Lock / Block
+    if (msg.includes('lock') || msg.includes('block') || msg.includes('shut') || msg.includes('kick')) {
+      return `To lock ${pcId}, click the "🔒 Lock PC" button below. This will end the user's session and free the system.`;
+    }
+
+    // App / Software
+    if (msg.includes('app') || msg.includes('software') || msg.includes('running') || msg.includes('program')) {
+      return `${pcId} is running: ${app}. Category: ${activity}. Sub-process: ${info.sub}.`;
+    }
+
+    // Specs / Hardware
+    if (msg.includes('spec') || msg.includes('ram') || msg.includes('hardware') || msg.includes('config')) {
+      const specs = item?.computer?.specs;
+      if (specs) return `${pcId} Specs → CPU: ${specs.cpu || 'N/A'}, RAM: ${specs.ram || 'N/A'}, Storage: ${specs.storage || 'N/A'}, OS: ${specs.os || 'N/A'}.`;
+      return `Hardware specs are not available for ${pcId}.`;
+    }
+
+    // Performance
+    if (msg.includes('performance') || msg.includes('slow') || msg.includes('lag') || msg.includes('speed')) {
+      const cpuUsage = Math.floor(Math.random() * 60) + 20;
+      const ramUsage = Math.floor(Math.random() * 50) + 30;
+      return `${pcId} Performance → CPU: ${cpuUsage}%, RAM: ${ramUsage}% used. ${cpuUsage > 70 ? '⚠️ High load detected!' : '✅ Running smoothly.'}`;
+    }
+
+    // Help
+    if (msg.includes('help') || msg.includes('command') || msg.includes('what can')) {
+      return `🤖 I can answer:\n• "what is this PC doing?"\n• "who is using this?"\n• "is this PC safe?"\n• "what app is running?"\n• "show specs"\n• "check performance"\n• "should I lock this?"`;
+    }
+
+    // Fallback
+    const fallbacks = [
+      `${pcId} is ${status}. ${status === 'in-use' ? `User: ${user}, Activity: ${activity}.` : 'No active session.'}`,
+      `Current analysis: ${activity} activity detected. Risk level: ${riskLevel}%.`,
+      `System is monitoring ${pcId}. Ask me about status, risk, user, apps, or performance.`,
+      `${user} is working on ${info.intent}. Everything looks ${riskLevel > 60 ? 'suspicious' : 'normal'}.`
+    ];
+    return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+  }
+
+  /* ── CHAT LOGIC ── */
+  let lastReplies = {};
+  function toggleChat() {
+    const box = document.getElementById('chatBox');
+    box.classList.toggle('active');
+    if (box.classList.contains('active')) document.getElementById('chatInput').focus();
+  }
+
+  function sendChat() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg || !selectedPc) return;
+
+    const msgsContainer = document.getElementById('chatMsgs');
+    if (!chatHistories[selectedPc]) chatHistories[selectedPc] = { messages: [], hasNew: false };
+    chatHistories[selectedPc].messages.push({ role: 'admin', text: msg });
+    
+    msgsContainer.innerHTML += `<div class="chat-msg admin">${msg}</div>`;
+    input.value = '';
+    msgsContainer.scrollTop = msgsContainer.scrollHeight;
+
+    setTimeout(() => {
+      const reply = getAIReply(msg, selectedPc);
+      chatHistories[selectedPc].messages.push({ role: 'student', text: `🤖 ${reply}` });
+
+      if (selectedPc === document.getElementById('detailTitle').textContent.split(' — ')[0]) {
+        msgsContainer.innerHTML += `<div class="chat-msg student">🤖 ${reply}</div>`;
+        msgsContainer.scrollTop = msgsContainer.scrollHeight;
+      }
+    }, 800);
+  }
+
+  /* ── AUTO STUDENT QUESTIONS ── */
+  const AUTO_STUDENT_QA = [
+    { q: "sir my code is not running", a: "Check console for errors and fix syntax issues." },
+    { q: "internet is slow", a: "Try refreshing or switch browser once." },
+    { q: "can i use usb", a: "USB is restricted. Ask lab assistant." },
+    { q: "system is lagging", a: "Close background apps to improve performance." },
+    { q: "can i install vscode", a: "Yes, but don't change system settings." },
+    { q: "file not saving", a: "Try Save As with a new name." },
+    { q: "can i restart pc", a: "Yes, but save your work first." },
+    { q: "can i open youtube", a: "Allowed only for study-related content." },
+    { q: "wifi not working", a: "Reconnect network or inform admin." },
+    { q: "how to fix error", a: "Check syntax and console errors carefully." }
+  ];
+
+  function autoAsk(pcId) {
+    if (!chatHistories[pcId]) chatHistories[pcId] = { messages: [], hasNew: false };
+    const qa = AUTO_STUDENT_QA[Math.floor(Math.random() * AUTO_STUDENT_QA.length)];
+
+    chatHistories[pcId].messages.push({ role: 'student', text: qa.q });
+    chatHistories[pcId].messages.push({ role: 'admin', text: qa.a });
+    chatHistories[pcId].hasNew = true;
+
+    if (selectedPc === pcId) {
+      const box = document.getElementById('chatMsgs');
+      box.innerHTML += `<div class="chat-msg student">${qa.q}</div><div class="chat-msg admin">${qa.a}</div>`;
+      box.scrollTop = box.scrollHeight;
+      chatHistories[pcId].hasNew = false;
+    }
+    addNotification(pcId, `AUTO Q&A: ${qa.q}`);
+    renderGrid();
+  }
+
+  /* ── NOTIFICATIONS & LOCK WORKFLOW ── */
+  function createNotif(pcId) {
+    const area = document.getElementById('notifArea');
+    const id = 'notif-' + Date.now();
+    area.innerHTML += `
+      <div class="notif-card" id="${id}">
+        <div class="notif-title">🔑 Unlock Request</div>
+        <div class="notif-desc">A student is requesting access to <b>${pcId}</b>.</div>
+        <div class="notif-actions">
+          <button class="notif-btn accept" onclick="acceptRequest('${pcId}', '${id}')">Accept & Unlock</button>
+          <button class="notif-btn reject" onclick="removeNotif('${id}')">Deny</button>
+        </div>
+      </div>`;
+  }
+
+  function removeNotif(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.opacity = '0';
+    setTimeout(() => el?.remove(), 400);
+  }
+
+  async function acceptRequest(pcId, notifId) {
+    removeNotif(notifId);
+    try {
+      // Find the computer and update status to in-use
+      const res = await api.get('/computers');
+      const comp = res.data.find(c => c.pcId === pcId);
+      if (comp) {
+        await api.patch(`/computers/${comp._id}`, { status: 'in-use' });
+        loadMonitor(); // refresh grid
+        alert(`🔓 ${pcId} has been unlocked and session started.`);
+      }
+    } catch (e) { alert('Failed to unlock PC'); }
+  }
+
+  async function lockPC() {
+    if (!selectedPc) return;
+    if (!confirm(`Lock and logout user from ${selectedPc}?`)) return;
+    
+    try {
+      const res = await api.get('/computers');
+      const comp = res.data.find(c => c.pcId === selectedPc);
+      if (comp) {
+        await api.patch(`/computers/${comp._id}`, { status: 'free' });
+        closeDetail();
+        loadMonitor();
+        alert(`🔒 ${selectedPc} is now locked.`);
+      }
+    } catch (e) { alert('Failed to lock PC'); }
+  }
+
+  // Randomly trigger unlock requests for FREE PCs
+  setInterval(() => {
+    if (!allComputers) return;
+    const free = allComputers.filter(c => c.status === 'free');
+    if (free.length > 0 && Math.random() > 0.7) {
+      const pick = free[Math.floor(Math.random() * free.length)];
+      createNotif(pick.pcId);
+    }
+  }, 15000);
+
+  function viewFull() {
+    if (!selectedPc) return;
+    const item = allCards.find(c => c.computer.pcId === selectedPc);
+    if (!item) return;
+    const { computer: c, activity, appName } = item;
+    const info = pcDetailedActivity[selectedPc] || { sub: 'Working' };
+
+    document.getElementById('stTitle').textContent = `${c.pcId} — ${c.hostname} (User: ${item.user || 'Student'})`;
+    document.getElementById('streamModal').classList.add('open');
+    
+    // Generate high-detail preview
+    const stDisplay = document.getElementById('stDisplay');
+    let bodyContent = '';
+
+    if (activity === 'Coding') {
+      bodyContent = `<div class="sim-body" style="padding:40px; gap:12px">${'<div class="sim-line w90" style="height:10px"></div><div class="sim-line w60 accent" style="height:10px"></div>'.repeat(10)}<div class="sim-typing" style="font-size:20px; margin-top:20px">${getSmartAction()}</div></div>`;
+    } else if (activity === 'Media' || activity === 'Gaming') {
+      const vid = getVisualForActivity(activity, true);
+      bodyContent = `<video src="${vid}" autoplay muted loop playsinline style="width:100%; height:450px; object-fit:cover; border-radius:12px;"></video>`;
+    } else {
+      const img = getVisualForActivity(activity, false);
+      bodyContent = `<img src="${img}" style="width:100%; height:450px; object-fit:cover; border-radius:12px;" />`;
+    }
+
+    const alert = detectBehavior(c.pcId, activity, info.sub);
+    let warning = '';
+    if (alert && alert.risk > 60) {
+      warning = `<div style="position:absolute;top:20px;left:20px;background:rgba(239,68,68,0.9);color:#fff;padding:10px 20px;font-size:16px;border-radius:8px;z-index:10;font-weight:700;backdrop-filter:blur(4px);border:2px solid rgba(255,255,255,0.2)">⚠ RISK ${alert.risk}% — ${alert.reason}</div>`;
+    }
+
+    stDisplay.innerHTML = `
+      <div class="activity-sim" style="position:relative">
+        ${warning}
+        <div class="sim-header" style="padding:16px"><div class="sim-dot" style="width:12px;height:12px"></div><div class="sim-dot" style="width:12px;height:12px"></div><div class="sim-title" style="font-size:16px">${info.sub} — ${info.intent}</div></div>
+        ${bodyContent}
+        <div class="sim-taskbar" style="height:40px"><div class="sim-start" style="width:24px;height:24px"></div><div class="sim-app-icon" style="width:24px;height:24px"></div></div>
+      </div>`;
+  }
+
+  function closeStream() {
+    document.getElementById('streamModal').classList.remove('open');
+  }
+
+  /* ── PERSISTENT STUDENT BOTS ── */
+  const PERSISTENT_STUDENTS = [
+    { id: 'ST-2041', name: 'Arjun Verma', preferredPc: 'PC-03', state: 'offline', lastActivity: 'Coding' },
+    { id: 'ST-2045', name: 'Priya Sharma', preferredPc: 'PC-07', state: 'offline', lastActivity: 'Docs' },
+    { id: 'ST-2050', name: 'Rahul Mehta', preferredPc: 'PC-13', state: 'offline', lastActivity: 'Gaming' },
+    { id: 'ST-2055', name: 'Sneha Gupta', preferredPc: 'PC-19', state: 'offline', lastActivity: 'Browsing' }
+  ];
+
+  function runStudentSimulation() {
+    PERSISTENT_STUDENTS.forEach(student => {
+      // If student is offline, try to rejoin
+      if (student.state === 'offline') {
+        const chance = Math.random();
+        if (chance > 0.8) { // 20% chance to request every check
+          requestPC(student);
+        }
+      }
+    });
+  }
+
+  function requestPC(student) {
+    student.state = 'requesting';
+    const area = document.getElementById('notifArea');
+    const id = 'notif-' + student.id;
+    
+    // Check if preferred PC is free
+    const isFree = allComputers?.find(c => c.pcId === student.preferredPc)?.status === 'free';
+    const pcToRequest = isFree ? student.preferredPc : null;
+
+    if (!pcToRequest) {
+      student.state = 'offline'; // Cancel if PC busy
+      return;
+    }
+
+    area.innerHTML += `
+      <div class="notif-card" id="${id}" style="border-color: #3b82f6">
+        <div class="notif-title" style="color:#3b82f6">👤 Student Return</div>
+        <div class="notif-desc"><b>${student.name}</b> (${student.id}) has returned and wants to continue work on <b>${pcToRequest}</b>.</div>
+        <div class="notif-actions">
+          <button class="notif-btn accept" style="background:#3b82f6" onclick="acceptStudent('${student.id}', '${pcToRequest}', '${id}')">Allow Return</button>
+          <button class="notif-btn reject" onclick="removeNotif('${id}'); resetStudent('${student.id}')">Wait</button>
+        </div>
+      </div>`;
+  }
+
+  function resetStudent(sid) {
+    const s = PERSISTENT_STUDENTS.find(x => x.id === sid);
+    if (s) s.state = 'offline';
+  }
+
+  async function acceptStudent(sid, pcId, notifId) {
+    const student = PERSISTENT_STUDENTS.find(x => x.id === sid);
+    removeNotif(notifId);
+    if (!student) return;
+
+    try {
+      const res = await api.get('/computers');
+      const comp = res.data.find(c => c.pcId === pcId);
+      if (comp) {
+        await api.patch(`/computers/${comp._id}`, { 
+          status: 'in-use',
+          currentUser: student.name
+        });
+        student.state = 'working';
+        loadMonitor();
+        
+        // Auto-leave after "45 minutes" (simulated as 40 seconds for demo)
+        setTimeout(() => studentLeave(student), 40000);
+      }
+    } catch (e) { alert('Failed to rejoin student'); student.state = 'offline'; }
+  }
+
+  async function studentLeave(student) {
+    if (student.state !== 'working') return;
+    try {
+      const res = await api.get('/computers');
+      const comp = res.data.find(c => c.pcId === student.preferredPc);
+      if (comp) {
+        await api.patch(`/computers/${comp._id}`, { status: 'free' });
+        student.state = 'offline';
+        loadMonitor();
+        console.log(`${student.name} has left for a break.`);
+      }
+    } catch (e) { console.error('Student leave failed'); }
+  }
+
+  setInterval(() => {
+    const active = allCards.filter(c => c.computer.status === 'in-use');
+    if (!active.length) return;
+    const pick = active[Math.floor(Math.random() * active.length)];
+    autoAsk(pick.computer.pcId);
+  }, 15000);
+
+  setInterval(() => {
+    allCards.forEach(item => {
+      const info = pcDetailedActivity[item.computer.pcId] || { sub: '' };
+      const alert = detectBehavior(item.computer.pcId, item.activity, info.sub);
+      if (alert && alert.risk > 75 && Math.random() > 0.6) {
+        addNotification(item.computer.pcId, `🚨 ALERT: ${alert.reason} (${alert.risk}% Risk)`);
+      }
+    });
+  }, 10000);
+
+  /* ── INIT ── */
+  loadMonitor();
+</script>
+
+<!-- LOGOUT VERIFICATION MODAL -->
+<div class="modal-overlay" id="logoutModal">
+  <div class="modal" style="width: 400px; border: 1px solid var(--border); padding: 20px;">
+    <div class="modal-header" style="border: none; padding-bottom: 8px;">
+      <div style="text-align: left; width: 100%;">
+        <h2 style="font-family: var(--font-display); font-size: 24px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">Verify Session</h2>
+        <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Sign in again to securely end your session</p>
+      </div>
+      <button class="btn-sm" style="position: absolute; top: 20px; right: 20px;" onclick="closeLogoutModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding-top: 10px;">
+      <div class="mb-24">
+        <label class="form-label" style="font-size: 11px; margin-bottom: 8px;">USERNAME / ID</label>
+        <input type="text" id="verifyId" class="form-control" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border); padding: 12px 16px; color: #fff; border-radius: 8px;" placeholder="e.g. admin or roll number">
+      </div>
+      <div>
+        <label class="form-label" style="font-size: 11px; margin-bottom: 8px;">PASSWORD</label>
+        <input type="password" id="verifyPass" class="form-control" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border); padding: 12px 16px; color: #fff; border-radius: 8px;" placeholder="Enter your password">
+      </div>
+    </div>
+    <div class="modal-footer" style="border-top: none; padding-top: 20px;">
+      <button class="btn" style="border: none; background: transparent; font-weight: 500;" onclick="closeLogoutModal()">Cancel</button>
+      <button class="btn btn-primary" style="width: 180px; justify-content: center;" onclick="confirmLogout()">Verify & Logout →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Profile Dropdown Logic
+  function toggleProfileDropdown() {
+    document.getElementById('profileDropdown').classList.toggle('active');
+  }
+
+  // Close dropdown when clicking outside
+  window.addEventListener('click', function(e) {
+    const trigger = document.getElementById('profileTrigger');
+    const dropdown = document.getElementById('profileDropdown');
+    if (trigger && !trigger.contains(e.target) && dropdown && !dropdown.contains(e.target)) {
+      dropdown.classList.remove('active');
+    }
+  });
+
+  // Logout Verification Logic
+  function showLogoutVerification() {
+    document.getElementById('logoutModal').classList.add('open');
+    document.getElementById('profileDropdown').classList.remove('active');
+  }
+
+  function closeLogoutModal() {
+    document.getElementById('logoutModal').classList.remove('open');
+    document.getElementById('verifyId').value = '';
+    document.getElementById('verifyPass').value = '';
+  }
+
+  async function confirmLogout() {
+    const id = document.getElementById('verifyId').value;
+    const pass = document.getElementById('verifyPass').value;
+    
+    if (!id || !pass) {
+      showToast('Please enter credentials', 'error');
+      return;
+    }
+    
+    try {
+      const res = await api.post('/auth/login', { username: id, password: pass });
+      if (res.success && res.data.role === 'admin') {
+        showToast('Verification successful', 'success');
+        setTimeout(() => logout(), 800);
+      } else {
+        showToast('Invalid credentials. Access Denied.', 'error');
+      }
+    } catch (e) {
+      showToast('Verification error. Try again.', 'error');
+    }
+  }
+
+  // Set user name in profile
+  const savedUser = localStorage.getItem('labos_user');
+  if (savedUser) document.getElementById('userNameDisplay').textContent = savedUser;
+</script>
+</body>
+</html>
